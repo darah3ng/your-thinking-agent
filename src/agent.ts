@@ -5,11 +5,12 @@ import type {
   ResponseReasoningItem,
 } from "openai/resources/responses/responses.js";
 
+import type { RunLogger } from "./logger.js";
 import { callModel } from "./model.js";
 import { executeTool } from "./tools/index.js";
 import type { SearchWebResult } from "./types.js";
 
-const DEFAULT_MAX_ITERATIONS = 5;
+const DEFAULT_MAX_ITERATIONS = 3;
 
 const SYSTEM_PROMPT = `You are an autonomous research assistant.
 
@@ -24,7 +25,7 @@ Do not research indefinitely. Stop once you have enough reliable information to 
 Your final answer should directly answer the question, explain the important findings, distinguish facts from your judgement, and include the URLs of the most useful search results. Do not claim that you opened or consulted a page when you only saw its search result.`;
 
 function getMaxIterations(): number {
-  const configuredValue = Number.parseInt(process.env.MAX_ITERATIONS ?? "", 5);
+  const configuredValue = Number.parseInt(process.env.MAX_ITERATIONS ?? "", 3);
 
   return Number.isSafeInteger(configuredValue) && configuredValue > 0
     ? configuredValue
@@ -39,7 +40,10 @@ function parseToolArguments(toolCall: ResponseFunctionToolCall): unknown {
   }
 }
 
-export async function runAgent(userGoal: string): Promise<string> {
+export async function runAgent(
+  userGoal: string,
+  logger: RunLogger,
+): Promise<string> {
   const input: ResponseInput = [
     {
       role: "user",
@@ -49,11 +53,28 @@ export async function runAgent(userGoal: string): Promise<string> {
 
   const maxIterations = getMaxIterations();
 
+  logger.log("AGENT_STARTED", {
+    maxIterations,
+    systemPrompt: SYSTEM_PROMPT,
+    conversation: input,
+  });
+
   // One iteration is one model decision followed by all tool calls it requests.
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
     console.log(`\n> ITERATION ${iteration}`);
 
+    logger.log("MODEL_REQUEST_SENT", {
+      iteration,
+      allowTools: true,
+      conversation: input,
+    });
+
     const response = await callModel(SYSTEM_PROMPT, input);
+
+    logger.log("MODEL_RESPONSE_RECEIVED", {
+      iteration,
+      response,
+    });
 
     // These are the output types our current text + function configuration can
     // produce and that the Responses API accepts as subsequent input.
@@ -71,6 +92,12 @@ export async function runAgent(userGoal: string): Promise<string> {
 
     input.push(...conversationItems);
 
+    logger.log("MODEL_OUTPUT_STORED", {
+      iteration,
+      storedItems: conversationItems,
+      conversation: input,
+    });
+
     const toolCalls = response.output.filter(
       (item): item is ResponseFunctionToolCall => item.type === "function_call",
     );
@@ -84,6 +111,11 @@ export async function runAgent(userGoal: string): Promise<string> {
         );
       }
 
+      logger.log("FINAL_ANSWER_PRODUCED", {
+        iteration,
+        finalAnswer: finalText,
+      });
+
       return finalText;
     }
 
@@ -91,8 +123,19 @@ export async function runAgent(userGoal: string): Promise<string> {
       console.log("\n> AGENT TOOL CALL");
       console.log(`${toolCall.name}(${toolCall.arguments})`);
 
+      logger.log("TOOL_CALL_RECEIVED", {
+        iteration,
+        toolCall,
+      });
+
       const args = parseToolArguments(toolCall);
       let result: SearchWebResult;
+
+      logger.log("TOOL_ARGUMENTS_PARSED", {
+        iteration,
+        toolName: toolCall.name,
+        args,
+      });
 
       if (args === undefined) {
         result = {
@@ -105,6 +148,12 @@ export async function runAgent(userGoal: string): Promise<string> {
         result = await executeTool(toolCall.name, args);
       }
 
+      logger.log("TOOL_RESULT_RECEIVED", {
+        iteration,
+        toolName: toolCall.name,
+        result,
+      });
+
       console.log("\n> TOOL RESULT");
       console.log(
         result.success
@@ -113,13 +162,31 @@ export async function runAgent(userGoal: string): Promise<string> {
       );
 
       // Match the observation to the model's request using the call ID.
-      input.push({
+      const toolOutput = {
         type: "function_call_output",
         call_id: toolCall.call_id,
         output: JSON.stringify(result),
+      } as const;
+
+      input.push(toolOutput);
+
+      logger.log("TOOL_OUTPUT_STORED", {
+        iteration,
+        storedItem: toolOutput,
+        conversation: input,
       });
     }
   }
+
+  logger.log("RESEARCH_LIMIT_REACHED", {
+    maxIterations,
+    conversation: input,
+  });
+
+  logger.log("FINAL_MODEL_REQUEST_SENT", {
+    allowTools: false,
+    conversation: input,
+  });
 
   const finalResponse = await callModel(
     `${SYSTEM_PROMPT}\n\nYou have reached the research limit. Do not request any more tools. Give the best possible answer using the information gathered so far.`,
@@ -127,11 +194,20 @@ export async function runAgent(userGoal: string): Promise<string> {
     false,
   );
 
+  logger.log("FINAL_MODEL_RESPONSE_RECEIVED", {
+    response: finalResponse,
+  });
+
   const finalText = finalResponse.output_text.trim();
 
   if (!finalText) {
     throw new Error("The model did not produce a final answer");
   }
+
+  logger.log("FINAL_ANSWER_PRODUCED", {
+    reason: "research_limit_reached",
+    finalAnswer: finalText,
+  });
 
   return finalText;
 }
