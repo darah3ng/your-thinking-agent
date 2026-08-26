@@ -77,6 +77,9 @@ Tavily currently returns titles, URLs, and snippets. OpenAI does not open or rea
 | --- | --- |
 | `src/index.ts` | Reads the CLI question and prints the answer |
 | `src/agent.ts` | Owns the loop and growing conversation |
+| `src/agent/conversation.ts` | Stores and reads OpenAI conversation items |
+| `src/agent/tool-call.ts` | Turns OpenAI function requests into tool outputs |
+| `src/agent/prompts.ts` | Contains the research instructions |
 | `src/model.ts` | Calls OpenAI and describes available tools |
 | `src/tools/index.ts` | Dispatches tool requests |
 | `src/tools/search-web.ts` | Calls Tavily |
