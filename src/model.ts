@@ -41,7 +41,7 @@ export function callModel(
     input,
     tools: allowTools ? tools : [],
     tool_choice: allowTools ? "auto" : "none",
-    parallel_tool_calls: true,
+    parallel_tool_calls: false,
     reasoning: {
       effort: "low",
     },

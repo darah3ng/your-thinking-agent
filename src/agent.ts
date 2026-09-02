@@ -32,15 +32,19 @@ export async function runAgent(
   const conversation = createConversation(userGoal);
   const maxIterations = getMaxIterations();
 
-  logger.log("AGENT_STARTED", {
-    maxIterations,
-    systemPrompt: SYSTEM_PROMPT,
-    conversation,
-  });
+  logger.info({ maxIterations }, "RUN STARTED");
+  logger.debug(
+    {
+      systemPrompt: SYSTEM_PROMPT,
+      conversation,
+    },
+    "AGENT STARTED",
+  );
 
   // One iteration is one model decision followed by all tool calls it requests.
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
     console.log(`\n> ITERATION ${iteration}`);
+    logger.info(`ITERATION ${iteration}`);
 
     const response = await requestModelDecision(
       iteration,
@@ -56,10 +60,9 @@ export async function runAgent(
         "The model returned neither a tool call nor final text",
       );
 
-      logger.log("FINAL_ANSWER_PRODUCED", {
-        iteration,
-        finalAnswer: finalText,
-      });
+      logger.info(
+        `FINAL ANSWER\nReason: OpenAI completed the research\n\n${finalText}`,
+      );
 
       return finalText;
     }
@@ -78,18 +81,18 @@ async function requestModelDecision(
   conversation: ResponseInput,
   logger: RunLogger,
 ): Promise<Response> {
-  logger.log("MODEL_REQUEST_SENT", {
-    iteration,
-    allowTools: true,
-    conversation,
-  });
+  logger.debug(
+    {
+      iteration,
+      allowTools: true,
+      conversation,
+    },
+    "MODEL REQUEST SENT",
+  );
 
   const response = await callModel(SYSTEM_PROMPT, conversation);
 
-  logger.log("MODEL_RESPONSE_RECEIVED", {
-    iteration,
-    response,
-  });
+  logger.debug({ iteration, response }, "MODEL RESPONSE RECEIVED");
 
   return response;
 }
@@ -99,15 +102,18 @@ async function forceFinalAnswer(
   maxIterations: number,
   logger: RunLogger,
 ): Promise<string> {
-  logger.log("RESEARCH_LIMIT_REACHED", {
-    maxIterations,
-    conversation,
-  });
+  logger.info(
+    { maxIterations },
+    "RESEARCH LIMIT REACHED - asking OpenAI to answer without more searches",
+  );
 
-  logger.log("FINAL_MODEL_REQUEST_SENT", {
-    allowTools: false,
-    conversation,
-  });
+  logger.debug(
+    {
+      allowTools: false,
+      conversation,
+    },
+    "FINAL MODEL REQUEST SENT",
+  );
 
   const finalResponse = await callModel(
     RESEARCH_LIMIT_PROMPT,
@@ -115,19 +121,16 @@ async function forceFinalAnswer(
     false,
   );
 
-  logger.log("FINAL_MODEL_RESPONSE_RECEIVED", {
-    response: finalResponse,
-  });
+  logger.debug({ response: finalResponse }, "FINAL MODEL RESPONSE RECEIVED");
 
   const finalText = getRequiredFinalText(
     finalResponse,
     "The model did not produce a final answer",
   );
 
-  logger.log("FINAL_ANSWER_PRODUCED", {
-    reason: "research_limit_reached",
-    finalAnswer: finalText,
-  });
+  logger.info(
+    `FINAL ANSWER\nReason: Maximum research iterations reached\n\n${finalText}`,
+  );
 
   return finalText;
 }

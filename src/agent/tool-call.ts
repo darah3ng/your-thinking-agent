@@ -13,26 +13,33 @@ export async function runToolCall(
   console.log("\n> AGENT TOOL CALL");
   console.log(`${toolCall.name}(${toolCall.arguments})`);
 
-  logger.log("TOOL_CALL_RECEIVED", {
-    iteration,
-    toolCall,
-  });
+  logger.debug({ iteration, toolCall }, "TOOL CALL RECEIVED");
 
   const args = parseToolArguments(toolCall);
 
-  logger.log("TOOL_ARGUMENTS_PARSED", {
-    iteration,
-    toolName: toolCall.name,
-    args,
-  });
+  logger.debug(
+    { iteration, toolName: toolCall.name, args },
+    "TOOL ARGUMENTS PARSED",
+  );
+
+  const query = getQuery(args, toolCall.arguments);
+  logger.info({ iteration, query }, "OPENAI REQUESTED SEARCH");
 
   const result = await executeParsedToolCall(toolCall, args);
 
-  logger.log("TOOL_RESULT_RECEIVED", {
-    iteration,
-    toolName: toolCall.name,
-    result,
-  });
+  if (result.success) {
+    logger.info(
+      { iteration, query, results: result.results },
+      "TAVILY RETURNED",
+    );
+  } else {
+    logger.warn({ iteration, query, error: result.error }, "TAVILY FAILED");
+  }
+
+  logger.debug(
+    { iteration, toolName: toolCall.name, result },
+    "TOOL RESULT RECEIVED",
+  );
 
   console.log("\n> TOOL RESULT");
   console.log(
@@ -47,6 +54,19 @@ export async function runToolCall(
     call_id: toolCall.call_id,
     output: JSON.stringify(result),
   };
+}
+
+function getQuery(args: unknown, fallback: string): string {
+  if (
+    typeof args === "object" &&
+    args !== null &&
+    "query" in args &&
+    typeof args.query === "string"
+  ) {
+    return args.query;
+  }
+
+  return fallback;
 }
 
 function parseToolArguments(toolCall: ResponseFunctionToolCall): unknown {

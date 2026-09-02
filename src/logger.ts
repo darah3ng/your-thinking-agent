@@ -1,34 +1,10 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
-export interface RunLogger {
-  filePath: string;
-  log(name: string, data?: unknown): void;
-}
+import pino, { type Logger } from "pino";
+import pretty from "pino-pretty";
 
-function formatData(data: unknown): string {
-  if (data === undefined) {
-    return "";
-  }
-
-  const serialized = JSON.stringify(
-    data,
-    (_key, value: unknown) => {
-      if (value instanceof Error) {
-        return {
-          name: value.name,
-          message: value.message,
-          stack: value.stack,
-        };
-      }
-
-      return typeof value === "bigint" ? value.toString() : value;
-    },
-    2,
-  );
-
-  return serialized ?? String(data);
-}
+export type RunLogger = Logger & { filePath: string };
 
 export function createRunLogger(): RunLogger {
   const logsDirectory = resolve(process.cwd(), "logs");
@@ -37,16 +13,19 @@ export function createRunLogger(): RunLogger {
 
   mkdirSync(logsDirectory, { recursive: true });
 
-  return {
-    filePath,
-    log(name, data) {
-      const timestamp = new Date().toISOString();
-      const formattedData = formatData(data);
-      const entry = formattedData
-        ? `[${timestamp}] ${name}\n${formattedData}\n\n`
-        : `[${timestamp}] ${name}\n\n`;
+  const output = pretty({
+    colorize: false,
+    destination: filePath,
+    ignore: "pid,hostname",
+    mkdir: true,
+    sync: true,
+    translateTime: "UTC:yyyy-mm-dd'T'HH:MM:ss.l'Z'",
+  });
+  const logger = pino(
+    { level: process.env.LOG_LEVEL?.toLowerCase() === "debug" ? "debug" : "info" },
+    output,
+  ) as RunLogger;
 
-      appendFileSync(filePath, entry, "utf8");
-    },
-  };
+  logger.filePath = filePath;
+  return logger;
 }

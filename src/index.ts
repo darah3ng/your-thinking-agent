@@ -12,7 +12,7 @@ if (!userGoal) {
 
 const logger = createRunLogger();
 
-logger.log("USER_INPUT_RECEIVED", { userGoal });
+logger.info(`USER INPUT\n${userGoal}`);
 
 console.log("> USER");
 console.log(userGoal);
@@ -22,12 +22,12 @@ console.log(logger.filePath);
 try {
   const finalAnswer = await runAgent(userGoal, logger);
 
-  logger.log("RUN_COMPLETED", { finalAnswer });
+  logger.info("RUN COMPLETED");
 
   console.log("\n> FINAL ANSWER");
   console.log(finalAnswer);
 } catch (error) {
-  logger.log("RUN_FAILED", { error });
+  logger.error(error, "RUN FAILED");
 
   console.error("\n> ERROR");
   console.error(error instanceof Error ? error.message : "Agent failed");

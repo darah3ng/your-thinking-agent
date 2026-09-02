@@ -37,11 +37,7 @@ export function storeModelOutput(
   const modelOutput = getConversationItems(response);
   conversation.push(...modelOutput);
 
-  logger.log("MODEL_OUTPUT_STORED", {
-    iteration,
-    storedItems: modelOutput,
-    conversation,
-  });
+  logger.debug({ iteration, storedItems: modelOutput }, "MODEL OUTPUT STORED");
 }
 
 export function getToolCalls(response: Response): ResponseFunctionToolCall[] {
@@ -58,11 +54,7 @@ export function storeToolOutput(
 ): void {
   conversation.push(toolOutput);
 
-  logger.log("TOOL_OUTPUT_STORED", {
-    iteration,
-    storedItem: toolOutput,
-    conversation,
-  });
+  logger.debug({ iteration, storedItem: toolOutput }, "TOOL OUTPUT STORED");
 }
 
 export function getRequiredFinalText(
