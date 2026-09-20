@@ -2,11 +2,9 @@ import type { ResponseInput } from "openai/resources/responses/responses.js";
 
 import {
   addCustomIterationFocus,
-  createConversation,
+  getConversationItems,
   getRequiredFinalText,
   getToolCalls,
-  storeModelOutput,
-  storeToolOutput,
 } from "./agent/conversation.js";
 import { RESEARCH_LIMIT_PROMPT, SYSTEM_PROMPT } from "./agent/prompts.js";
 import { runToolCall } from "./agent/tool-call.js";
@@ -35,7 +33,7 @@ export async function runAgent(
   const maxIterations = getMaxIterations();
   validateThinkingFitsLoop(customThinking, maxIterations);
 
-  const conversation = createConversation(userGoal, customThinking);
+  const conversation: ResponseInput = [{ role: "user", content: userGoal }];
 
   logger.info({ maxIterations }, "RUN STARTED");
   logger.debug(
@@ -46,7 +44,7 @@ export async function runAgent(
     "AGENT STARTED",
   );
 
-  // One iteration is one model decision followed by all tool calls it requests.
+  // Ask the model what to do, execute its tools, and return their output.
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
     const customQuestion = customThinking?.questions[iteration - 1];
 
@@ -57,16 +55,16 @@ export async function runAgent(
     console.log(`\n> ITERATION ${iteration}`);
     logIterationFocus(iteration, customQuestion, logger);
 
+    // 1. Let the model answer or request a web search.
     const toolMode = customQuestion ? "required" : "auto";
-    logger.debug(
-      { iteration, toolMode, conversation },
-      "MODEL REQUEST SENT",
-    );
+    logger.debug({ iteration, toolMode, conversation }, "MODEL REQUEST SENT");
     const response = await callModel(SYSTEM_PROMPT, conversation, toolMode);
     logger.debug({ iteration, response }, "MODEL RESPONSE RECEIVED");
 
-    storeModelOutput(response, conversation, iteration, logger);
+    // 2. Keep the response so the model remembers what it requested.
+    conversation.push(...getConversationItems(response));
 
+    // 3. No tool call means the model has finished.
     const toolCalls = getToolCalls(response);
     if (toolCalls.length === 0) {
       const finalText = getRequiredFinalText(
@@ -81,9 +79,9 @@ export async function runAgent(
       return finalText;
     }
 
+    // 4. Execute every requested tool and give the results back to the model.
     for (const toolCall of toolCalls) {
-      const toolOutput = await runToolCall(toolCall, iteration, logger);
-      storeToolOutput(toolOutput, conversation, iteration, logger);
+      conversation.push(await runToolCall(toolCall, iteration, logger));
     }
   }
 
@@ -102,7 +100,7 @@ async function forceFinalAnswer(
 
   logger.debug(
     {
-      allowTools: false,
+      toolMode: "none",
       conversation,
     },
     "FINAL MODEL REQUEST SENT",
