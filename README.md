@@ -1,4 +1,4 @@
-# Custom Thinking Agent
+# Your Thinking Agent
 
 A small TypeScript CLI that uses OpenAI to decide what to research and Tavily
 to search the web. Each run writes a readable trace to `logs/`.
