@@ -41,3 +41,27 @@ Then run:
 ```bash
 npm run agent -- "your research question"
 ```
+
+## Custom thinking
+
+Optionally provide up to three expert questions in a JSON file:
+
+```json
+{
+  "questions": [
+    "What are the operational constraints?",
+    "What commonly fails in production?"
+  ]
+}
+```
+
+Run with:
+
+```bash
+npm run agent -- --thinking ./thinking.json "your research question"
+```
+
+Each question guides its matching research iteration. If fewer than three are
+provided, the remaining iterations are adaptive and OpenAI decides what to
+investigate next. Guided iterations always perform a Tavily search. The final
+answer call is unchanged.

@@ -1,26 +1,55 @@
 import "dotenv/config";
 
 import { runAgent } from "./agent.js";
+import { parseCliArgs } from "./cli.js";
 import { createRunLogger } from "./logger.js";
+import { loadCustomThinking } from "./thinking.js";
 
-const userGoal = process.argv.slice(2).join(" ").trim();
+const usage =
+  'Usage: npm run agent -- [--thinking ./thinking.json] "your research question"';
 
-if (!userGoal) {
-  console.error('Usage: npm run agent -- "your research question"');
+let cliOptions;
+
+try {
+  cliOptions = parseCliArgs(process.argv.slice(2));
+} catch (error) {
+  console.error(error instanceof Error ? error.message : "Invalid arguments");
+  console.error(usage);
+  process.exit(1);
+}
+
+if (!cliOptions.userGoal) {
+  console.error(usage);
   process.exit(1);
 }
 
 const logger = createRunLogger();
 
-logger.info(`USER INPUT\n${userGoal}`);
+logger.info(`USER INPUT\n${cliOptions.userGoal}`);
 
 console.log("> USER");
-console.log(userGoal);
+console.log(cliOptions.userGoal);
 console.log("\n> LOG");
 console.log(logger.filePath);
 
 try {
-  const finalAnswer = await runAgent(userGoal, logger);
+  const customThinking = cliOptions.thinkingPath
+    ? await loadCustomThinking(cliOptions.thinkingPath)
+    : undefined;
+
+  if (customThinking) {
+    logger.info(
+      `CUSTOM THINKING LOADED\nQuestions: ${customThinking.questions.length}`,
+    );
+    console.log("\n> CUSTOM THINKING");
+    console.log(`${customThinking.questions.length} question(s) loaded`);
+  }
+
+  const finalAnswer = await runAgent(
+    cliOptions.userGoal,
+    logger,
+    customThinking,
+  );
 
   logger.info("RUN COMPLETED");
 

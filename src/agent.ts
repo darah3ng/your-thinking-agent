@@ -1,9 +1,7 @@
-import type {
-  Response,
-  ResponseInput,
-} from "openai/resources/responses/responses.js";
+import type { ResponseInput } from "openai/resources/responses/responses.js";
 
 import {
+  addCustomIterationFocus,
   createConversation,
   getRequiredFinalText,
   getToolCalls,
@@ -14,8 +12,12 @@ import { RESEARCH_LIMIT_PROMPT, SYSTEM_PROMPT } from "./agent/prompts.js";
 import { runToolCall } from "./agent/tool-call.js";
 import type { RunLogger } from "./logger.js";
 import { callModel } from "./model.js";
+import {
+  MAX_CUSTOM_THINKING_QUESTIONS,
+  type CustomThinking,
+} from "./thinking.js";
 
-const DEFAULT_MAX_ITERATIONS = 3;
+const DEFAULT_MAX_ITERATIONS = MAX_CUSTOM_THINKING_QUESTIONS;
 
 function getMaxIterations(): number {
   const configuredValue = Number.parseInt(process.env.MAX_ITERATIONS ?? "", 10);
@@ -28,9 +30,12 @@ function getMaxIterations(): number {
 export async function runAgent(
   userGoal: string,
   logger: RunLogger,
+  customThinking?: CustomThinking,
 ): Promise<string> {
-  const conversation = createConversation(userGoal);
   const maxIterations = getMaxIterations();
+  validateThinkingFitsLoop(customThinking, maxIterations);
+
+  const conversation = createConversation(userGoal, customThinking);
 
   logger.info({ maxIterations }, "RUN STARTED");
   logger.debug(
@@ -43,14 +48,23 @@ export async function runAgent(
 
   // One iteration is one model decision followed by all tool calls it requests.
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
-    console.log(`\n> ITERATION ${iteration}`);
-    logger.info(`ITERATION ${iteration}`);
+    const customQuestion = customThinking?.questions[iteration - 1];
 
-    const response = await requestModelDecision(
-      iteration,
-      conversation,
-      logger,
+    if (customQuestion) {
+      addCustomIterationFocus(conversation, iteration, customQuestion);
+    }
+
+    console.log(`\n> ITERATION ${iteration}`);
+    logIterationFocus(iteration, customQuestion, logger);
+
+    const toolMode = customQuestion ? "required" : "auto";
+    logger.debug(
+      { iteration, toolMode, conversation },
+      "MODEL REQUEST SENT",
     );
+    const response = await callModel(SYSTEM_PROMPT, conversation, toolMode);
+    logger.debug({ iteration, response }, "MODEL RESPONSE RECEIVED");
+
     storeModelOutput(response, conversation, iteration, logger);
 
     const toolCalls = getToolCalls(response);
@@ -76,27 +90,6 @@ export async function runAgent(
   return forceFinalAnswer(conversation, maxIterations, logger);
 }
 
-async function requestModelDecision(
-  iteration: number,
-  conversation: ResponseInput,
-  logger: RunLogger,
-): Promise<Response> {
-  logger.debug(
-    {
-      iteration,
-      allowTools: true,
-      conversation,
-    },
-    "MODEL REQUEST SENT",
-  );
-
-  const response = await callModel(SYSTEM_PROMPT, conversation);
-
-  logger.debug({ iteration, response }, "MODEL RESPONSE RECEIVED");
-
-  return response;
-}
-
 async function forceFinalAnswer(
   conversation: ResponseInput,
   maxIterations: number,
@@ -118,7 +111,7 @@ async function forceFinalAnswer(
   const finalResponse = await callModel(
     RESEARCH_LIMIT_PROMPT,
     conversation,
-    false,
+    "none",
   );
 
   logger.debug({ response: finalResponse }, "FINAL MODEL RESPONSE RECEIVED");
@@ -133,4 +126,33 @@ async function forceFinalAnswer(
   );
 
   return finalText;
+}
+
+function validateThinkingFitsLoop(
+  customThinking: CustomThinking | undefined,
+  maxIterations: number,
+): void {
+  if (customThinking && customThinking.questions.length > maxIterations) {
+    throw new Error(
+      `Custom thinking contains ${customThinking.questions.length} questions, but MAX_ITERATIONS is ${maxIterations}`,
+    );
+  }
+}
+
+function logIterationFocus(
+  iteration: number,
+  customQuestion: string | undefined,
+  logger: RunLogger,
+): void {
+  if (customQuestion) {
+    console.log("> FOCUS: CUSTOM QUESTION");
+    console.log(customQuestion);
+    logger.info(
+      `ITERATION ${iteration}\nFocus: custom question\n${customQuestion}`,
+    );
+    return;
+  }
+
+  console.log("> FOCUS: ADAPTIVE (OpenAI decides)");
+  logger.info(`ITERATION ${iteration}\nFocus: adaptive (OpenAI decides)`);
 }

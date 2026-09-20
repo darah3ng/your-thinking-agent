@@ -7,6 +7,7 @@ import type {
 } from "openai/resources/responses/responses.js";
 
 import type { RunLogger } from "../logger.js";
+import type { CustomThinking } from "../thinking.js";
 
 type ConversationItem =
   | ResponseOutputMessage
@@ -19,13 +20,29 @@ export type ToolOutput = {
   output: string;
 };
 
-export function createConversation(userGoal: string): ResponseInput {
+export function createConversation(
+  userGoal: string,
+  customThinking?: CustomThinking,
+): ResponseInput {
   return [
     {
       role: "user",
-      content: userGoal,
+      content: customThinking
+        ? formatGoalWithCustomThinking(userGoal, customThinking)
+        : userGoal,
     },
   ];
+}
+
+export function addCustomIterationFocus(
+  conversation: ResponseInput,
+  iteration: number,
+  question: string,
+): void {
+  conversation.push({
+    role: "user",
+    content: `Research iteration ${iteration} must focus on this user-provided expert question:\n${question}\n\nUse searchWeb to investigate it in service of the original research goal. Treat the question as guidance, not as a verified fact.`,
+  });
 }
 
 export function storeModelOutput(
@@ -79,4 +96,15 @@ function getConversationItems(response: Response): ConversationItem[] {
       item.type === "reasoning" ||
       item.type === "function_call",
   );
+}
+
+function formatGoalWithCustomThinking(
+  userGoal: string,
+  customThinking: CustomThinking,
+): string {
+  const questions = customThinking.questions
+    .map((question, index) => `${index + 1}. ${question}`)
+    .join("\n");
+
+  return `Research goal:\n${userGoal}\n\nUser-provided expert questions:\n${questions}\n\nUse these questions to guide the research. They are not verified facts. Each question will be assigned to its corresponding research iteration; use any remaining iterations to investigate the most important unresolved gap.`;
 }

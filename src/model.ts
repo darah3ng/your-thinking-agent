@@ -9,7 +9,9 @@ const DEFAULT_MODEL = "gpt-5.6-luna";
 
 const openai = new OpenAI();
 
-export const tools: Tool[] = [
+export type ToolMode = "auto" | "required" | "none";
+
+const tools: Tool[] = [
   {
     type: "function",
     name: "searchWeb",
@@ -33,14 +35,14 @@ export const tools: Tool[] = [
 export function callModel(
   instructions: string,
   input: ResponseInput,
-  allowTools = true,
+  toolMode: ToolMode = "auto",
 ): Promise<Response> {
   return openai.responses.create({
     model: process.env.LLM_MODEL ?? DEFAULT_MODEL,
     instructions,
     input,
-    tools: allowTools ? tools : [],
-    tool_choice: allowTools ? "auto" : "none",
+    tools: toolMode === "none" ? [] : tools,
+    tool_choice: toolMode,
     parallel_tool_calls: false,
     reasoning: {
       effort: "low",
