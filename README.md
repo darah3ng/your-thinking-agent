@@ -1,4 +1,4 @@
-# Research Agent
+# Custom Thinking Agent
 
 A small TypeScript CLI that uses OpenAI to decide what to research and Tavily
 to search the web. Each run writes a readable trace to `logs/`.
@@ -20,6 +20,9 @@ OpenAI decides whether it needs web research
 The agent runs up to three research iterations, with at most one Tavily search
 per iteration. If all three request a search, one final OpenAI call is made with
 tools disabled to produce the answer.
+
+The project combines a lightweight CLI harness with an explicit agent loop that
+decides when to search, consume results, and answer.
 
 ## Run it
 
