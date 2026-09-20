@@ -3,6 +3,11 @@
 A small TypeScript CLI that uses OpenAI to decide what to research and Tavily
 to search the web. Each run writes a readable trace to `logs/`.
 
+## Services
+
+- **OpenAI** decides what to research and produces the final answer.
+- **Tavily** searches the web and returns relevant sources.
+
 ## How the loop works
 
 ```text
